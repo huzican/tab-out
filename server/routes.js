@@ -19,6 +19,7 @@
 
 const express  = require('express');
 const path      = require('path');
+const { getUpdateStatus } = require('./updater');
 
 // Pull in the database prepared statements we need
 const {
@@ -222,6 +223,20 @@ router.get('/stats', (req, res) => {
   } catch (err) {
     console.error('[routes] GET /stats failed:', err.message);
     res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/update-status
+//
+// Read-only check: is there a newer version on GitHub?
+// No shell commands, no code execution. Just returns a boolean.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/update-status', (req, res) => {
+  try {
+    res.json(getUpdateStatus());
+  } catch {
+    res.json({ updateAvailable: false });
   }
 });
 

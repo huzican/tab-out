@@ -1677,6 +1677,27 @@ async function fetchMissionById(missionId) {
 }
 
 /* ----------------------------------------------------------------
+   UPDATE NOTIFICATION (read-only, no code execution)
+   ---------------------------------------------------------------- */
+async function checkForUpdates() {
+  try {
+    const res = await fetch('/api/update-status');
+    if (!res.ok) return;
+    const { updateAvailable } = await res.json();
+    if (!updateAvailable) return;
+
+    // Show a simple text notification in the footer
+    const footer = document.querySelector('footer');
+    if (!footer) return;
+    const notice = document.createElement('div');
+    notice.style.cssText = 'text-align:center; padding:8px; font-size:12px; color:var(--muted);';
+    notice.innerHTML = 'A new version of Tab Out is available. Run <code style="background:var(--warm-gray);padding:2px 6px;border-radius:3px;font-size:11px;">git pull</code> to update, or visit <a href="https://github.com/zarazhangrui/tab-out" target="_top" style="color:var(--accent-amber);text-decoration:underline;text-underline-offset:2px;">the repo</a>.';
+    footer.after(notice);
+  } catch {}
+}
+
+/* ----------------------------------------------------------------
    INITIALIZE
    ---------------------------------------------------------------- */
 renderDashboard();
+checkForUpdates();
