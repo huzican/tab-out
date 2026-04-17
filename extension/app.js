@@ -17,6 +17,42 @@
 
 
 /* ----------------------------------------------------------------
+   APP CONFIG — chrome.storage.local
+   ---------------------------------------------------------------- */
+
+const CONFIG_DEFAULTS = {
+  userName: '',
+  pomodoroWorkMinutes: 25,
+  pomodoroBreakMinutes: 5,
+  clockShowSeconds: false,
+  clockFormat: '12',
+  searchEngine: 'google',
+  quickLinks: [
+    { title: 'Gmail',    url: 'https://mail.google.com' },
+    { title: 'GitHub',   url: 'https://github.com' },
+    { title: 'YouTube',  url: 'https://youtube.com' },
+    { title: 'Twitter',  url: 'https://x.com' },
+    { title: 'LinkedIn', url: 'https://linkedin.com' },
+  ],
+};
+
+let appConfig = { ...CONFIG_DEFAULTS };
+
+async function loadConfig() {
+  try {
+    const { 'tabout-config': saved } = await chrome.storage.local.get('tabout-config');
+    if (saved) appConfig = { ...CONFIG_DEFAULTS, ...saved };
+  } catch { /* first run — use defaults */ }
+}
+
+async function saveConfig(updates) {
+  appConfig = { ...appConfig, ...updates };
+  await chrome.storage.local.set({ 'tabout-config': appConfig });
+}
+
+
+
+/* ----------------------------------------------------------------
    CHROME TABS — Direct API Access
 
    Since this page IS the extension's new tab page, it has full
@@ -46,6 +82,7 @@ async function fetchOpenTabs() {
       windowId: t.windowId,
       active:   t.active,
       // Flag Tab Out's own pages so we can detect duplicate new tabs
+      favIconUrl: t.favIconUrl || '',
       isTabOut: t.url === newtabUrl || t.url === 'chrome://newtab/',
     }));
   } catch {
@@ -90,7 +127,14 @@ async function closeTabsByUrls(urls) {
     })
     .map(tab => tab.id);
 
-  if (toClose.length > 0) await chrome.tabs.remove(toClose);
+  if (toClose.length > 0) {
+    // Track recently closed
+    for (const id of toClose) {
+      const tab = allTabs.find(t => t.id === id);
+      if (tab) addRecentlyClosed({ url: tab.url, title: tab.title });
+    }
+    await chrome.tabs.remove(toClose);
+  }
   await fetchOpenTabs();
 }
 
@@ -105,7 +149,13 @@ async function closeTabsExact(urls) {
   const urlSet = new Set(urls);
   const allTabs = await chrome.tabs.query({});
   const toClose = allTabs.filter(t => urlSet.has(t.url)).map(t => t.id);
-  if (toClose.length > 0) await chrome.tabs.remove(toClose);
+  if (toClose.length > 0) {
+    for (const id of toClose) {
+      const tab = allTabs.find(t => t.id === id);
+      if (tab) addRecentlyClosed({ url: tab.url, title: tab.title });
+    }
+    await chrome.tabs.remove(toClose);
+  }
   await fetchOpenTabs();
 }
 
@@ -767,9 +817,9 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
     const safeTitle = label.replace(/"/g, '&quot;');
     let domain = '';
     try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    const faviconUrl = tab.favIconUrl || (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '');
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.src='https://www.google.com/s2/favicons?domain=${domain}&sz=16';this.onerror=null">` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
@@ -848,9 +898,9 @@ function renderDomainCard(group) {
     const safeTitle = label.replace(/"/g, '&quot;');
     let domain = '';
     try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    const faviconUrl = tab.favIconUrl || (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '');
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.src='https://www.google.com/s2/favicons?domain=${domain}&sz=16';this.onerror=null">` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
@@ -1023,7 +1073,7 @@ async function renderStaticDashboard() {
   // --- Header ---
   const greetingEl = document.getElementById('greeting');
   const dateEl     = document.getElementById('dateDisplay');
-  if (greetingEl) greetingEl.textContent = getGreeting();
+  if (greetingEl) greetingEl.textContent = getGreeting() + (appConfig.userName ? `, ${appConfig.userName}` : '');
   if (dateEl)     dateEl.textContent     = getDateDisplay();
 
   // --- Fetch tabs ---
@@ -1069,6 +1119,12 @@ async function renderStaticDashboard() {
 
   // Custom group rules from config.local.js (if any)
   const customGroups = typeof LOCAL_CUSTOM_GROUPS !== 'undefined' ? LOCAL_CUSTOM_GROUPS : [];
+
+  // Load drag-and-drop overrides from storage
+  const dragState = await chrome.storage.local.get(['tabout-group-order', 'tabout-tab-moves', 'tabout-tab-order']);
+  const savedGroupOrder = dragState['tabout-group-order'] || null;     // [domain1, domain2, ...]
+  const savedTabMoves   = dragState['tabout-tab-moves']   || {};       // { tabUrl: targetDomainKey }
+  const savedTabOrder   = dragState['tabout-tab-order']   || {};       // { domainKey: [url1, url2, ...] }
 
   // Check if a URL matches a custom group rule; returns the rule or null
   function matchCustomGroup(url) {
@@ -1122,6 +1178,49 @@ async function renderStaticDashboard() {
     groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
   }
 
+  // --- Apply saved cross-group tab moves ---
+  // Tabs the user previously dragged to a different group
+  for (const [tabUrl, targetDomain] of Object.entries(savedTabMoves)) {
+    // Find which group currently has this tab
+    let sourceGroup = null, tabIdx = -1;
+    for (const g of Object.values(groupMap)) {
+      const idx = g.tabs.findIndex(t => t.url === tabUrl);
+      if (idx !== -1) { sourceGroup = g; tabIdx = idx; break; }
+    }
+    if (!sourceGroup || tabIdx === -1) continue;
+    // Target group must exist (tab might have been closed)
+    if (!groupMap[targetDomain]) continue;
+    if (sourceGroup.domain === targetDomain) continue;
+    const [tab] = sourceGroup.tabs.splice(tabIdx, 1);
+    groupMap[targetDomain].tabs.push(tab);
+  }
+
+  // Remove empty groups after moves
+  for (const key of Object.keys(groupMap)) {
+    if (groupMap[key].tabs.length === 0) delete groupMap[key];
+  }
+
+  // Clean up stale move entries (tabs that no longer exist)
+  const openUrls = new Set(realTabs.map(t => t.url));
+  let movesChanged = false;
+  for (const url of Object.keys(savedTabMoves)) {
+    if (!openUrls.has(url)) { delete savedTabMoves[url]; movesChanged = true; }
+  }
+  if (movesChanged) chrome.storage.local.set({ 'tabout-tab-moves': savedTabMoves });
+
+  // --- Apply saved tab order within groups ---
+  for (const [domainKey, urlOrder] of Object.entries(savedTabOrder)) {
+    const group = groupMap[domainKey];
+    if (!group) continue;
+    const orderMap = {};
+    urlOrder.forEach((url, i) => { orderMap[url] = i; });
+    group.tabs.sort((a, b) => {
+      const ai = orderMap[a.url] ?? 9999;
+      const bi = orderMap[b.url] ?? 9999;
+      return ai - bi;
+    });
+  }
+
   // Sort: landing pages first, then domains from landing page sites, then by tab count
   // Collect exact hostnames and suffix patterns for priority sorting
   const landingHostnames = new Set(LANDING_PAGE_PATTERNS.map(p => p.hostname).filter(Boolean));
@@ -1141,6 +1240,17 @@ async function renderStaticDashboard() {
 
     return b.tabs.length - a.tabs.length;
   });
+
+  // --- Apply saved group order (from drag-and-drop) ---
+  if (savedGroupOrder && savedGroupOrder.length > 0) {
+    const orderMap = {};
+    savedGroupOrder.forEach((d, i) => { orderMap[d] = i; });
+    domainGroups.sort((a, b) => {
+      const ai = orderMap[a.domain] ?? 9999;
+      const bi = orderMap[b.domain] ?? 9999;
+      return ai - bi;
+    });
+  }
 
   // --- Render domain cards ---
   const openTabsSection      = document.getElementById('openTabsSection');
@@ -1164,12 +1274,16 @@ async function renderStaticDashboard() {
   // --- Check for duplicate Tab Out tabs ---
   checkTabOutDupes();
 
-  // --- Render "Saved for Later" column ---
+  // --- Render "Saved for Later" section ---
   await renderDeferredColumn();
+
+  // --- Enable drag-and-drop ---
+  makeDraggable();
 }
 
 async function renderDashboard() {
   await renderStaticDashboard();
+  initDragAndDrop();
 }
 
 
@@ -1230,7 +1344,10 @@ document.addEventListener('click', async (e) => {
     // Close the tab in Chrome directly
     const allTabs = await chrome.tabs.query({});
     const match   = allTabs.find(t => t.url === tabUrl);
-    if (match) await chrome.tabs.remove(match.id);
+    if (match) {
+      addRecentlyClosed({ url: match.url, title: match.title });
+      await chrome.tabs.remove(match.id);
+    }
     await fetchOpenTabs();
 
     playCloseSound();
@@ -1261,6 +1378,7 @@ document.addEventListener('click', async (e) => {
     if (statTabs) statTabs.textContent = openTabs.length;
 
     showToast('Tab closed');
+    renderRecentlyClosed();
     return;
   }
 
@@ -1370,6 +1488,7 @@ document.addEventListener('click', async (e) => {
 
     const groupLabel = group.domain === '__landing-pages__' ? 'Homepages' : (group.label || friendlyDomain(group.domain));
     showToast(`Closed ${urls.length} tab${urls.length !== 1 ? 's' : ''} from ${groupLabel}`);
+    renderRecentlyClosed();
 
     const statTabs = document.getElementById('statTabs');
     if (statTabs) statTabs.textContent = openTabs.length;
@@ -1445,6 +1564,218 @@ document.addEventListener('click', (e) => {
   }
 });
 
+
+/* ----------------------------------------------------------------
+   DRAG AND DROP — Tabs within/across groups + Group reordering
+   ---------------------------------------------------------------- */
+
+let dragData = null; // { type: 'tab'|'card', tabUrl, sourceDomain, groupDomain }
+
+function initDragAndDrop() {
+  const container = document.getElementById('openTabsMissions');
+  if (!container) return;
+
+  // --- DRAG START ---
+  container.addEventListener('dragstart', (e) => {
+    const chip = e.target.closest('.page-chip[data-action="focus-tab"]');
+    const card = e.target.closest('.mission-card');
+
+    if (chip && !e.target.closest('.chip-action')) {
+      // Dragging a tab chip
+      const tabUrl = chip.dataset.tabUrl;
+      const cardEl = chip.closest('.mission-card');
+      const sourceDomain = cardEl ? cardEl.dataset.domainId : '';
+      dragData = { type: 'tab', tabUrl, sourceDomain };
+      chip.classList.add('dragging-chip');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', tabUrl);
+    } else if (card && !chip) {
+      // Dragging a group card
+      const domainId = card.dataset.domainId;
+      dragData = { type: 'card', groupDomain: domainId };
+      card.classList.add('dragging-card');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', domainId);
+    }
+  });
+
+  // --- DRAG OVER ---
+  container.addEventListener('dragover', (e) => {
+    if (!dragData) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    // Clear previous indicators
+    container.querySelectorAll('.drag-over-tab, .drag-over-card').forEach(el => {
+      el.classList.remove('drag-over-tab', 'drag-over-card');
+    });
+
+    if (dragData.type === 'tab') {
+      // Highlight the chip or card being hovered
+      const overChip = e.target.closest('.page-chip[data-action="focus-tab"]');
+      const overCard = e.target.closest('.mission-card');
+      if (overChip) {
+        overChip.classList.add('drag-over-tab');
+      } else if (overCard) {
+        overCard.classList.add('drag-over-card');
+      }
+    } else if (dragData.type === 'card') {
+      const overCard = e.target.closest('.mission-card');
+      if (overCard && overCard.dataset.domainId !== dragData.groupDomain) {
+        overCard.classList.add('drag-over-card');
+      }
+    }
+  });
+
+  // --- DRAG LEAVE ---
+  container.addEventListener('dragleave', (e) => {
+    const el = e.target.closest('.drag-over-tab, .drag-over-card');
+    if (el) el.classList.remove('drag-over-tab', 'drag-over-card');
+  });
+
+  // --- DROP ---
+  container.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    container.querySelectorAll('.drag-over-tab, .drag-over-card, .dragging-chip, .dragging-card').forEach(el => {
+      el.classList.remove('drag-over-tab', 'drag-over-card', 'dragging-chip', 'dragging-card');
+    });
+
+    if (!dragData) return;
+
+    if (dragData.type === 'tab') {
+      await handleTabDrop(e, dragData);
+    } else if (dragData.type === 'card') {
+      handleCardDrop(e, dragData);
+    }
+
+    dragData = null;
+  });
+
+  // --- DRAG END ---
+  container.addEventListener('dragend', () => {
+    container.querySelectorAll('.dragging-chip, .dragging-card, .drag-over-tab, .drag-over-card').forEach(el => {
+      el.classList.remove('dragging-chip', 'dragging-card', 'drag-over-tab', 'drag-over-card');
+    });
+    dragData = null;
+  });
+}
+
+/**
+ * handleTabDrop — move/reorder a tab within or across groups
+ */
+async function handleTabDrop(e, data) {
+  const targetCard = e.target.closest('.mission-card');
+  if (!targetCard) return;
+  const targetDomainId = targetCard.dataset.domainId;
+
+  // Find source and target groups
+  const sourceGroup = domainGroups.find(g => 'domain-' + g.domain.replace(/[^a-z0-9]/g, '-') === data.sourceDomain);
+  const targetGroup = domainGroups.find(g => 'domain-' + g.domain.replace(/[^a-z0-9]/g, '-') === targetDomainId);
+  if (!sourceGroup || !targetGroup) return;
+
+  const tabIdx = sourceGroup.tabs.findIndex(t => t.url === data.tabUrl);
+  if (tabIdx === -1) return;
+  const [tab] = sourceGroup.tabs.splice(tabIdx, 1);
+
+  // Find target position
+  const targetChip = e.target.closest('.page-chip[data-action="focus-tab"]');
+  if (targetChip && targetDomainId === data.sourceDomain) {
+    // Same group — reorder
+    const targetUrl = targetChip.dataset.tabUrl;
+    const targetIdx = targetGroup.tabs.findIndex(t => t.url === targetUrl);
+    targetGroup.tabs.splice(targetIdx >= 0 ? targetIdx : targetGroup.tabs.length, 0, tab);
+  } else {
+    // Different group or no specific chip — append
+    targetGroup.tabs.push(tab);
+  }
+
+  // Remove empty source group
+  if (sourceGroup.tabs.length === 0) {
+    const idx = domainGroups.indexOf(sourceGroup);
+    if (idx !== -1) domainGroups.splice(idx, 1);
+  }
+
+  // --- Persist drag state ---
+  // Save cross-group moves
+  if (sourceGroup.domain !== targetGroup.domain) {
+    const { 'tabout-tab-moves': moves = {} } = await chrome.storage.local.get('tabout-tab-moves');
+    moves[data.tabUrl] = targetGroup.domain;
+    await chrome.storage.local.set({ 'tabout-tab-moves': moves });
+  }
+
+  // Save tab order within the target group (and source if still exists)
+  const orderUpdate = {};
+  orderUpdate[targetGroup.domain] = targetGroup.tabs.map(t => t.url);
+  if (sourceGroup.tabs.length > 0) {
+    orderUpdate[sourceGroup.domain] = sourceGroup.tabs.map(t => t.url);
+  }
+  const { 'tabout-tab-order': savedOrder = {} } = await chrome.storage.local.get('tabout-tab-order');
+  Object.assign(savedOrder, orderUpdate);
+  await chrome.storage.local.set({ 'tabout-tab-order': savedOrder });
+
+  // Re-render affected cards
+  reRenderCards();
+  showToast('Tab moved');
+}
+
+/**
+ * handleCardDrop — reorder group cards
+ */
+function handleCardDrop(e, data) {
+  const targetCard = e.target.closest('.mission-card');
+  if (!targetCard) return;
+  const targetDomainId = targetCard.dataset.domainId;
+  if (targetDomainId === data.groupDomain) return;
+
+  const srcIdx = domainGroups.findIndex(g => 'domain-' + g.domain.replace(/[^a-z0-9]/g, '-') === data.groupDomain);
+  const tgtIdx = domainGroups.findIndex(g => 'domain-' + g.domain.replace(/[^a-z0-9]/g, '-') === targetDomainId);
+  if (srcIdx === -1 || tgtIdx === -1) return;
+
+  const [moved] = domainGroups.splice(srcIdx, 1);
+  domainGroups.splice(tgtIdx, 0, moved);
+
+  reRenderCards();
+
+  // Save order to storage
+  const order = domainGroups.map(g => g.domain);
+  chrome.storage.local.set({ 'tabout-group-order': order });
+}
+
+/**
+ * reRenderCards — re-renders all domain cards from current domainGroups state
+ */
+function reRenderCards() {
+  const missionsEl = document.getElementById('openTabsMissions');
+  const countEl = document.getElementById('openTabsSectionCount');
+  const sectionEl = document.getElementById('openTabsSection');
+  if (!missionsEl) return;
+
+  const realTabs = getRealTabs();
+
+  if (domainGroups.length > 0) {
+    countEl.innerHTML = `${domainGroups.length} domain${domainGroups.length !== 1 ? 's' : ''} &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} Close all ${realTabs.length} tabs</button>`;
+    missionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
+    sectionEl.style.display = 'block';
+    // Re-enable drag on new elements
+    makeDraggable();
+  } else if (sectionEl) {
+    checkAndShowEmptyState();
+  }
+}
+
+/**
+ * makeDraggable — adds draggable attribute to cards and chips
+ */
+function makeDraggable() {
+  document.querySelectorAll('#openTabsMissions .mission-card').forEach(card => {
+    card.draggable = true;
+  });
+  document.querySelectorAll('#openTabsMissions .page-chip[data-action="focus-tab"]').forEach(chip => {
+    chip.draggable = true;
+  });
+}
+
+
 // ---- Archive search — filter archived items as user types ----
 document.addEventListener('input', async (e) => {
   if (e.target.id !== 'archiveSearch') return;
@@ -1479,4 +1810,401 @@ document.addEventListener('input', async (e) => {
 /* ----------------------------------------------------------------
    INITIALIZE
    ---------------------------------------------------------------- */
-renderDashboard();
+
+// ---- Search engine config ----
+const SEARCH_ENGINES = {
+  google:     { action: 'https://www.google.com/search', param: 'q', label: 'Google' },
+  bing:       { action: 'https://www.bing.com/search', param: 'q', label: 'Bing' },
+  duckduckgo: { action: 'https://duckduckgo.com/', param: 'q', label: 'DuckDuckGo' },
+  brave:      { action: 'https://search.brave.com/search', param: 'q', label: 'Brave' },
+  ecosia:     { action: 'https://www.ecosia.org/search', param: 'q', label: 'Ecosia' },
+};
+
+function updateSearchBar() {
+  const form = document.getElementById('searchForm');
+  const input = document.getElementById('searchInput');
+  if (!form || !input) return;
+  const engine = SEARCH_ENGINES[appConfig.searchEngine] || SEARCH_ENGINES.google;
+  form.action = engine.action;
+  input.name = engine.param;
+  input.placeholder = `Search ${engine.label}...`;
+}
+
+// ---- Dark mode ----
+function initDarkMode() {
+  const isDark = localStorage.getItem('tabout-dark-mode') === 'true';
+  document.body.classList.toggle('dark-mode', isDark);
+  updateDarkModeIcon(isDark);
+
+  document.getElementById('darkModeToggle')?.addEventListener('click', () => {
+    const nowDark = document.body.classList.toggle('dark-mode');
+    localStorage.setItem('tabout-dark-mode', nowDark);
+    updateDarkModeIcon(nowDark);
+  });
+}
+
+function updateDarkModeIcon(isDark) {
+  const icon = document.getElementById('darkModeIcon');
+  if (!icon) return;
+  if (isDark) {
+    // Sun icon for dark mode (click to go light)
+    icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />';
+  } else {
+    // Moon icon for light mode (click to go dark)
+    icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />';
+  }
+}
+
+// ---- Live clock ----
+function updateClock() {
+  const el = document.getElementById('clock');
+  if (!el) return;
+  const now = new Date();
+  const opts = { hour: 'numeric', minute: '2-digit', hour12: appConfig.clockFormat === '12' };
+  if (appConfig.clockShowSeconds) opts.second = '2-digit';
+  el.textContent = now.toLocaleTimeString('en-US', opts);
+}
+
+// ---- Weather ----
+async function loadWeather() {
+  const el = document.getElementById('weather');
+  if (!el) return;
+  try {
+    const cached = localStorage.getItem('tabout-weather');
+    const cachedTime = parseInt(localStorage.getItem('tabout-weather-time') || '0');
+    if (cached && Date.now() - cachedTime < 30 * 60 * 1000) {
+      el.textContent = cached;
+      return;
+    }
+    const resp = await fetch('https://wttr.in/?format=%t+%C', { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) throw new Error();
+    const text = (await resp.text()).trim();
+    el.textContent = text;
+    localStorage.setItem('tabout-weather', text);
+    localStorage.setItem('tabout-weather-time', Date.now().toString());
+  } catch {
+    if (!el.textContent) el.style.display = 'none';
+  }
+}
+
+// ---- Quick links ----
+function renderQuickLinks() {
+  const container = document.getElementById('quickLinks');
+  if (!container) return;
+  const links = appConfig.quickLinks || [];
+  if (links.length === 0) { container.style.display = 'none'; return; }
+  container.style.display = 'flex';
+
+  container.innerHTML = links.map((link, i) => {
+    let domain = '';
+    try { domain = new URL(link.url).hostname; } catch {}
+    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '';
+    return `<a class="quick-link" href="${link.url}" target="_top" title="${link.title || domain}" draggable="true" data-ql-index="${i}">
+      ${faviconUrl ? `<img src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : `<span>${(link.title || '?')[0]}</span>`}
+    </a>`;
+  }).join('');
+
+  // Drag-to-reorder
+  let dragIdx = null;
+  container.addEventListener('dragstart', e => {
+    const el = e.target.closest('.quick-link');
+    if (el) { dragIdx = parseInt(el.dataset.qlIndex); el.classList.add('dragging'); }
+  });
+  container.addEventListener('dragover', e => {
+    e.preventDefault();
+    const el = e.target.closest('.quick-link');
+    if (el) el.classList.add('drag-over');
+  });
+  container.addEventListener('dragleave', e => {
+    const el = e.target.closest('.quick-link');
+    if (el) el.classList.remove('drag-over');
+  });
+  container.addEventListener('drop', async e => {
+    e.preventDefault();
+    const el = e.target.closest('.quick-link');
+    if (!el || dragIdx === null) return;
+    el.classList.remove('drag-over');
+    const dropIdx = parseInt(el.dataset.qlIndex);
+    if (dragIdx === dropIdx) return;
+    const links = [...appConfig.quickLinks];
+    const [moved] = links.splice(dragIdx, 1);
+    links.splice(dropIdx, 0, moved);
+    await saveConfig({ quickLinks: links });
+    renderQuickLinks();
+  });
+  container.addEventListener('dragend', () => {
+    dragIdx = null;
+    container.querySelectorAll('.quick-link').forEach(el => el.classList.remove('dragging', 'drag-over'));
+  });
+}
+
+// ---- Pomodoro timer ----
+let pomodoroInterval = null;
+
+function initPomodoro() {
+  const timeEl    = document.getElementById('pomodoroTime');
+  const labelEl   = document.getElementById('pomodoroLabel');
+  const playBtn   = document.getElementById('pomodoroPlayPause');
+  const resetBtn  = document.getElementById('pomodoroReset');
+  if (!timeEl || !playBtn) return;
+
+  // Load state from localStorage
+  const state = JSON.parse(localStorage.getItem('tabout-pomodoro') || 'null') || {
+    remaining: appConfig.pomodoroWorkMinutes * 60,
+    mode: 'work',
+    running: false,
+    lastTick: null,
+  };
+
+  // Account for elapsed time while page was closed
+  if (state.running && state.lastTick) {
+    const elapsed = Math.floor((Date.now() - state.lastTick) / 1000);
+    state.remaining = Math.max(0, state.remaining - elapsed);
+  }
+
+  function saveState() {
+    state.lastTick = Date.now();
+    localStorage.setItem('tabout-pomodoro', JSON.stringify(state));
+  }
+
+  function render() {
+    const mins = Math.floor(state.remaining / 60);
+    const secs = state.remaining % 60;
+    timeEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    labelEl.textContent = state.mode;
+    timeEl.className = 'pomodoro-time ' + (state.mode === 'work' ? 'pomodoro-work' : 'pomodoro-break');
+    playBtn.textContent = state.running ? '⏸' : '▶';
+  }
+
+  function tick() {
+    if (state.remaining <= 0) {
+      // Switch mode
+      if (state.mode === 'work') {
+        state.mode = 'break';
+        state.remaining = appConfig.pomodoroBreakMinutes * 60;
+        showToast('Time for a break!');
+      } else {
+        state.mode = 'work';
+        state.remaining = appConfig.pomodoroWorkMinutes * 60;
+        showToast('Break over — back to work!');
+      }
+    } else {
+      state.remaining--;
+    }
+    saveState();
+    render();
+  }
+
+  function start() {
+    if (pomodoroInterval) return;
+    state.running = true;
+    saveState();
+    pomodoroInterval = setInterval(tick, 1000);
+    render();
+  }
+
+  function pause() {
+    state.running = false;
+    if (pomodoroInterval) { clearInterval(pomodoroInterval); pomodoroInterval = null; }
+    saveState();
+    render();
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (state.running) pause(); else start();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    pause();
+    state.mode = 'work';
+    state.remaining = appConfig.pomodoroWorkMinutes * 60;
+    saveState();
+    render();
+  });
+
+  render();
+  if (state.running) start();
+}
+
+// ---- Recently closed tabs ----
+function getRecentlyClosed() {
+  return JSON.parse(localStorage.getItem('tabout-recently-closed') || '[]');
+}
+
+function addRecentlyClosed(tab) {
+  const list = getRecentlyClosed();
+  list.unshift({ url: tab.url, title: tab.title, closedAt: new Date().toISOString() });
+  if (list.length > 20) list.length = 20;
+  localStorage.setItem('tabout-recently-closed', JSON.stringify(list));
+}
+
+function renderRecentlyClosed() {
+  const section = document.getElementById('recentlyClosedSection');
+  const list    = document.getElementById('recentlyClosedList');
+  const countEl = document.getElementById('recentlyClosedCount');
+  if (!section || !list) return;
+
+  const items = getRecentlyClosed();
+  if (items.length === 0) { section.style.display = 'none'; return; }
+
+  section.style.display = 'block';
+  if (countEl) countEl.textContent = `(${items.length})`;
+
+  list.innerHTML = items.map(item => {
+    let domain = '';
+    try { domain = new URL(item.url).hostname.replace(/^www\./, ''); } catch {}
+    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    return `<div class="recently-closed-item">
+      <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
+        ${faviconUrl ? `<img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" onerror="this.style.display='none'">` : ''}
+        ${item.title || item.url}
+      </a>
+      <span class="deferred-meta">${domain} · ${timeAgo(item.closedAt)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ---- Settings modal ----
+function initSettings() {
+  const overlay = document.getElementById('settingsOverlay');
+  const panel   = document.getElementById('settingsPanel');
+  if (!overlay) return;
+
+  function open() {
+    // Populate fields with current config
+    const s = (id) => document.getElementById(id);
+    s('settingUserName').value = appConfig.userName || '';
+    s('settingClockFormat').value = appConfig.clockFormat || '12';
+    s('settingClockSeconds').checked = appConfig.clockShowSeconds || false;
+    s('settingPomodoroWork').value = appConfig.pomodoroWorkMinutes || 25;
+    s('settingPomodoroBreak').value = appConfig.pomodoroBreakMinutes || 5;
+    s('settingSearchEngine').value = appConfig.searchEngine || 'google';
+
+    // Render quick links list
+    renderSettingsQuickLinks();
+
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+  }
+
+  function close() {
+    overlay.classList.remove('visible');
+    setTimeout(() => { overlay.style.display = 'none'; }, 300);
+  }
+
+  document.getElementById('settingsBtn')?.addEventListener('click', open);
+  document.getElementById('settingsClose')?.addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.style.display !== 'none') close(); });
+
+  // Save
+  document.getElementById('settingsSave')?.addEventListener('click', async () => {
+    const s = (id) => document.getElementById(id);
+    await saveConfig({
+      userName: s('settingUserName').value.trim(),
+      clockFormat: s('settingClockFormat').value,
+      clockShowSeconds: s('settingClockSeconds').checked,
+      pomodoroWorkMinutes: Math.min(120, Math.max(1, parseInt(s('settingPomodoroWork').value) || 25)),
+      pomodoroBreakMinutes: Math.min(60, Math.max(1, parseInt(s('settingPomodoroBreak').value) || 5)),
+      searchEngine: s('settingSearchEngine').value,
+    });
+    close();
+    showToast('Settings saved');
+    // Refresh UI
+    updateSearchBar();
+    renderQuickLinks();
+    updateClock();
+    // Update greeting with new name
+    const greetingEl = document.getElementById('greeting');
+    if (greetingEl) greetingEl.textContent = getGreeting() + (appConfig.userName ? `, ${appConfig.userName}` : '');
+  });
+
+  // Add quick link
+  document.getElementById('settingAddLink')?.addEventListener('click', async () => {
+    const titleEl = document.getElementById('settingNewLinkTitle');
+    const urlEl   = document.getElementById('settingNewLinkUrl');
+    let url = urlEl.value.trim();
+    const title = titleEl.value.trim();
+    if (!url) return;
+    if (!url.startsWith('http')) url = 'https://' + url;
+    const links = [...(appConfig.quickLinks || []), { title: title || url, url }];
+    await saveConfig({ quickLinks: links });
+    titleEl.value = ''; urlEl.value = '';
+    renderSettingsQuickLinks();
+    renderQuickLinks();
+  });
+}
+
+function renderSettingsQuickLinks() {
+  const container = document.getElementById('settingsQuickLinks');
+  if (!container) return;
+  const links = appConfig.quickLinks || [];
+  container.innerHTML = links.map((link, i) => {
+    return `<div class="settings-ql-item">
+      <span class="settings-ql-title">${link.title || link.url}</span>
+      <button class="settings-ql-remove" data-ql-remove="${i}">×</button>
+    </div>`;
+  }).join('');
+
+  // Remove handlers
+  container.querySelectorAll('[data-ql-remove]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.qlRemove);
+      const links = [...appConfig.quickLinks];
+      links.splice(idx, 1);
+      await saveConfig({ quickLinks: links });
+      renderSettingsQuickLinks();
+      renderQuickLinks();
+    });
+  });
+}
+
+// ---- Recently closed toggle ----
+document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('#recentlyClosedToggle');
+  if (!toggle) return;
+  toggle.classList.toggle('open');
+  const list = document.getElementById('recentlyClosedList');
+  if (list) list.style.display = list.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('clearRecentlyClosed')?.addEventListener('click', () => {
+  localStorage.removeItem('tabout-recently-closed');
+  renderRecentlyClosed();
+  showToast('Recently closed history cleared');
+});
+
+// ---- Main init ----
+async function init() {
+  await loadConfig();
+  initDarkMode();
+  updateSearchBar();
+  renderQuickLinks();
+  updateClock();
+  setInterval(updateClock, 1000);
+  loadWeather();
+  initPomodoro();
+  initSettings();
+  await renderDashboard();
+  renderRecentlyClosed();
+
+  // Auto-refresh when tabs change in the browser
+  let refreshTimer = null;
+  function scheduleRefresh() {
+    // Debounce: wait 300ms after the last event before re-rendering
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(async () => {
+      await renderStaticDashboard();
+      renderRecentlyClosed();
+    }, 300);
+  }
+
+  chrome.tabs.onCreated.addListener(scheduleRefresh);
+  chrome.tabs.onRemoved.addListener(scheduleRefresh);
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    // Only refresh when a tab finishes loading (not on every intermediate state)
+    if (changeInfo.status === 'complete' || changeInfo.title) scheduleRefresh();
+  });
+}
+
+init();

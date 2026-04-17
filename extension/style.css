@@ -48,12 +48,6 @@ body::before {
   padding: 48px 32px 80px;
 }
 
-/* When the saved-for-later sidebar is open, expand the container
-   so the tab grid still has room for 2-3 columns */
-.container:has(.dashboard-columns) {
-  max-width: 1300px;
-}
-
 /* ---- Header ---- */
 header {
   display: flex;
@@ -888,38 +882,10 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
    SAVED FOR LATER — Checklist Column + Archive
    ================================================================ */
 
-/* ---- Two-column layout ---- */
-.dashboard-columns {
-  display: flex;
-  gap: 32px;
-  align-items: flex-start;
-}
-
-/* Open tabs column keeps the grid layout */
-.dashboard-columns .active-section {
-  flex: 1;
-  min-width: 600px;
-}
-
-/* Saved for later column — fixed width on the right, scrolls independently */
-.deferred-column {
-  width: 280px;
-  flex-shrink: 0;
-  position: sticky;
-  top: 32px;
-  max-height: calc(100vh - 64px);
-  overflow-y: auto;
-}
-
-/* On narrow screens, stack vertically */
-@media (max-width: 800px) {
-  .dashboard-columns {
-    flex-direction: column;
-  }
-  .deferred-column {
-    width: 100%;
-    position: static;
-  }
+/* ---- Saved for Later section (below tabs) ---- */
+.deferred-section {
+  margin-top: 32px;
+  max-width: 600px;
 }
 
 /* ---- Checklist items ---- */
@@ -1155,4 +1121,495 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   color: var(--muted);
   opacity: 0.6;
   flex-shrink: 0;
+}
+
+
+/* ================================================================
+   DARK MODE
+   ================================================================ */
+
+html.dark-mode,
+body.dark-mode {
+  --ink: #e8e2da;
+  --paper: #1a1a1e;
+  --warm-gray: #2e2e33;
+  --muted: #7a7570;
+  --card-bg: #232328;
+  --shadow: rgba(0, 0, 0, 0.2);
+  --accent-amber: #d4894e;
+  --accent-sage: #6a9a72;
+  --accent-slate: #7a8b9a;
+  --accent-rose: #c86a6a;
+  --status-active: #4d9a5a;
+  --status-cooling: #c8993e;
+  --status-abandoned: #c86a6a;
+}
+
+body.dark-mode::before {
+  opacity: 0.015;
+}
+
+
+/* ================================================================
+   HEADER — right side controls
+   ================================================================ */
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.icon-btn:hover {
+  color: var(--ink);
+  background: rgba(154, 145, 138, 0.1);
+}
+
+
+/* ================================================================
+   LIVE CLOCK
+   ================================================================ */
+
+.clock {
+  font-family: 'Newsreader', serif;
+  font-size: 22px;
+  font-weight: 300;
+  color: var(--ink);
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+
+/* ================================================================
+   WEATHER
+   ================================================================ */
+
+.weather {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+
+/* ================================================================
+   POMODORO TIMER
+   ================================================================ */
+
+.pomodoro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(154, 145, 138, 0.06);
+  border: 1px solid rgba(154, 145, 138, 0.12);
+}
+
+.pomodoro-time {
+  font-family: 'Newsreader', serif;
+  font-size: 18px;
+  font-weight: 400;
+  min-width: 48px;
+  text-align: center;
+}
+
+.pomodoro-time.pomodoro-work { color: var(--accent-amber); }
+.pomodoro-time.pomodoro-break { color: var(--accent-sage); }
+
+.pomodoro-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.pomodoro-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pomodoro-btn:hover {
+  color: var(--ink);
+  background: rgba(154, 145, 138, 0.12);
+}
+
+
+/* ================================================================
+   QUICK LINKS
+   ================================================================ */
+
+.quick-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+
+.quick-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 1px solid var(--warm-gray);
+  text-decoration: none;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.quick-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow);
+  border-color: var(--accent-amber);
+}
+
+.quick-link img {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+}
+
+.quick-link span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.quick-link.dragging { opacity: 0.4; }
+.quick-link.drag-over { border-color: var(--accent-amber); background: rgba(200, 113, 58, 0.06); }
+
+
+/* ================================================================
+   SEARCH BAR
+   ================================================================ */
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--warm-gray);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 20px;
+  transition: border-color 0.2s;
+}
+
+.search-bar:focus-within {
+  border-color: var(--accent-amber);
+}
+
+.search-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.search-bar input {
+  flex: 1;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+}
+
+.search-bar input::placeholder {
+  color: var(--muted);
+}
+
+
+/* ================================================================
+   RECENTLY CLOSED TABS
+   ================================================================ */
+
+.recently-closed-section {
+  margin-top: 20px;
+}
+
+.recently-closed-toggle {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  transition: color 0.15s;
+}
+
+.recently-closed-toggle:hover { color: var(--ink); }
+.recently-closed-toggle.open .archive-chevron { transform: rotate(180deg); }
+
+.recently-closed-item {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(154, 145, 138, 0.08);
+}
+
+.recently-closed-item:last-child { border-bottom: none; }
+
+.recently-closed-item .deferred-meta {
+  display: block;
+  margin-top: 2px;
+}
+
+
+/* ================================================================
+   SETTINGS MODAL
+   ================================================================ */
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.settings-overlay.visible { opacity: 1; }
+
+.settings-panel {
+  background: var(--card-bg);
+  border-radius: 12px;
+  width: 440px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.25);
+  transform: translateY(20px);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-overlay.visible .settings-panel {
+  transform: translateY(0);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--warm-gray);
+}
+
+.settings-header h2 {
+  font-family: 'Newsreader', serif;
+  font-weight: 400;
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.settings-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+
+.settings-input {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  padding: 8px 12px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.settings-input:focus { border-color: var(--accent-amber); }
+
+.settings-input-sm {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  width: 60px;
+  padding: 6px 8px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+  text-align: center;
+}
+
+.settings-input-sm:focus { border-color: var(--accent-amber); }
+
+.settings-select {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  padding: 8px 12px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.settings-row label {
+  font-size: 13px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-checkbox-label {
+  font-size: 13px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.settings-footer {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--warm-gray);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-ql-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(154, 145, 138, 0.1);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.settings-ql-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-ql-remove {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+
+.settings-ql-remove:hover { color: var(--status-abandoned); }
+
+.settings-quick-links {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+/* ================================================================
+   DRAG AND DROP
+   ================================================================ */
+
+/* Dragging a tab chip */
+.page-chip[draggable="true"] {
+  cursor: grab;
+}
+
+.page-chip[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.dragging-chip {
+  opacity: 0.4;
+}
+
+/* Dragging a group card */
+.mission-card[draggable="true"] {
+  cursor: grab;
+}
+
+.dragging-card {
+  opacity: 0.35;
+  transform: scale(0.97);
+}
+
+/* Drop target indicators */
+.drag-over-tab {
+  background: rgba(200, 113, 58, 0.1) !important;
+  border-color: var(--accent-amber) !important;
+  border-radius: 4px;
+}
+
+.drag-over-card {
+  box-shadow: 0 0 0 2px var(--accent-amber), 0 4px 20px var(--shadow) !important;
+  transform: translateY(-1px);
+}
+
+
+/* ================================================================
+   RESPONSIVE — header stacking on narrow screens
+   ================================================================ */
+
+@media (max-width: 600px) {
+  header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .header-right {
+    flex-wrap: wrap;
+  }
+  .settings-panel {
+    width: 95vw;
+  }
 }

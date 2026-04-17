@@ -87,6 +87,35 @@ chrome.tabs.onUpdated.addListener(() => {
   updateBadge();
 });
 
+// ─── Keyboard shortcut: jump to Tab Out ─────────────────────────────────────
+
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== 'go-to-tabout') return;
+
+  const extensionId = chrome.runtime.id;
+  const tabOutUrl = `chrome-extension://${extensionId}/index.html`;
+
+  const allTabs = await chrome.tabs.query({});
+  const currentWindow = await chrome.windows.getCurrent();
+
+  // Find all Tab Out tabs
+  const tabOutTabs = allTabs.filter(t =>
+    t.url === tabOutUrl || t.url === 'chrome://newtab/'
+  );
+
+  if (tabOutTabs.length > 0) {
+    // Prefer one in the current window, otherwise pick any
+    const inCurrentWindow = tabOutTabs.find(t => t.windowId === currentWindow.id);
+    const target = inCurrentWindow || tabOutTabs[0];
+    await chrome.tabs.update(target.id, { active: true });
+    await chrome.windows.update(target.windowId, { focused: true });
+  } else {
+    // No Tab Out tab exists — open one in the current window
+    await chrome.tabs.create({ url: tabOutUrl });
+  }
+});
+
+
 // ─── Initial run ─────────────────────────────────────────────────────────────
 
 // Run once immediately when the service worker first loads

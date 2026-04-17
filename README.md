@@ -1,84 +1,139 @@
+<div align="center">
+
 # Tab Out
 
 **Keep tabs on your tabs.**
 
-Tab Out is a Chrome extension that replaces your new tab page with a dashboard of everything you have open. Tabs are grouped by domain, with homepages (Gmail, X, LinkedIn, etc.) pulled into their own group. Close tabs with a satisfying swoosh + confetti.
+![Chrome](https://img.shields.io/badge/Chrome-Extension-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
+![Manifest V3](https://img.shields.io/badge/Manifest-V3-34A853?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-No server. No account. No external API calls. Just a Chrome extension.
+</div>
 
 ---
 
-## Install with a coding agent
+Tab Out replaces your Chrome new tab page with a dashboard that shows everything you have open — grouped by domain, with landing pages pulled into their own group. Close tabs with a satisfying swoosh + confetti.
 
-Send your coding agent (Claude Code, Codex, etc.) this repo and say **"install this"**:
-
-```
-https://github.com/zarazhangrui/tab-out
-```
-
-The agent will walk you through it. Takes about 1 minute.
+No server. No account. No build tools. Just a Chrome extension.
 
 ---
 
 ## Features
 
-- **See all your tabs at a glance** on a clean grid, grouped by domain
-- **Homepages group** pulls Gmail inbox, X home, YouTube, LinkedIn, GitHub homepages into one card
-- **Close tabs with style** with swoosh sound + confetti burst
-- **Duplicate detection** flags when you have the same page open twice, with one-click cleanup
-- **Click any tab to jump to it** across windows, no new tab opened
-- **Save for later** bookmark tabs to a checklist before closing them
-- **Localhost grouping** shows port numbers next to each tab so you can tell your vibe coding projects apart
-- **Expandable groups** show the first 8 tabs with a clickable "+N more"
-- **100% local** your data never leaves your machine
-- **Pure Chrome extension** no server, no Node.js, no npm, no setup beyond loading the extension
+### Tab Management
+- **Domain grouping** — open tabs automatically grouped by domain into clean cards
+- **Homepages group** — Gmail inbox, X home, YouTube, LinkedIn, GitHub homepages get their own card
+- **Click to jump** — click any tab title to switch to it, even across windows
+- **Close with style** — swoosh sound + confetti burst when you close a group
+- **Close single tab** — X button on each tab to close just that one
+- **Duplicate detection** — flags duplicates with `(2x)` badge, one-click "Close duplicates"
+- **Expandable groups** — shows first 8 tabs, click "+N more" to reveal the rest
+- **Real-time sync** — dashboard auto-updates when you open/close tabs in other windows
+
+### Drag & Drop
+- **Reorder tabs** — drag tabs within a group to rearrange
+- **Move tabs** — drag a tab from one domain group to another
+- **Reorder groups** — drag entire domain cards to rearrange
+- **Persistent** — drag-and-drop changes survive page refresh
+
+### Save for Later
+- **Bookmark before closing** — save any tab to a checklist, then close it
+- **Checklist** — check off saved tabs when you're done with them
+- **Archive** — completed items move to a searchable archive
+- **Below tabs** — saved items and archive appear below the tab grid
+
+### Productivity
+- **Dark mode** — sun/moon toggle, persists across sessions
+- **Live clock** — configurable 12/24h format with optional seconds
+- **Pomodoro timer** — 25/5 work-break timer, survives tab closes
+- **Weather** — current conditions in the header (via wttr.in, no API key)
+- **Search bar** — configurable engine (Google, Bing, DuckDuckGo, Brave, Ecosia)
+- **Quick links** — row of favicon shortcuts, drag to reorder
+- **Personalized greeting** — "Good morning, [name]" with your configured name
+- **Recently closed** — collapsible list of last 20 closed tabs, click to reopen
+
+### Keyboard Shortcut
+- **`Alt+T`** — instantly jump to Tab Out from any window (customizable in `chrome://extensions/shortcuts`)
+
+### Privacy
+- **100% local** — no data sent anywhere, no external API calls (except weather)
+- **No server** — pure Chrome extension, no Node.js, no npm
+- **No account** — no sign-up, no cloud sync
 
 ---
 
-## Manual Setup
+## Install
 
-**1. Clone the repo**
+**1. Clone**
 
 ```bash
-git clone https://github.com/zarazhangrui/tab-out.git
+git clone https://github.com/huzican/tab-out.git
 ```
 
-**2. Load the Chrome extension**
+**2. Load in Chrome**
 
-1. Open Chrome and go to `chrome://extensions`
+1. Go to `chrome://extensions`
 2. Enable **Developer mode** (top-right toggle)
 3. Click **Load unpacked**
-4. Navigate to the `extension/` folder inside the cloned repo and select it
+4. Select the `extension/` folder
 
-**3. Open a new tab**
+**3. Open a new tab** — you'll see Tab Out.
 
-You'll see Tab Out.
+**4. (Optional) Set keyboard shortcut**
 
----
-
-## How it works
-
-```
-You open a new tab
-  -> Tab Out shows your open tabs grouped by domain
-  -> Homepages (Gmail, X, etc.) get their own group at the top
-  -> Click any tab title to jump to it
-  -> Close groups you're done with (swoosh + confetti)
-  -> Save tabs for later before closing them
-```
-
-Everything runs inside the Chrome extension. No external server, no API calls, no data sent anywhere. Saved tabs are stored in `chrome.storage.local`.
+Go to `chrome://extensions/shortcuts` to customize the `Alt+T` shortcut.
 
 ---
 
-## Tech stack
+## Settings
 
-| What | How |
-|------|-----|
+Click the gear icon in the top-right to configure:
+
+| Setting | Options |
+|---------|---------|
+| Your name | Personalizes the greeting |
+| Clock format | 12-hour / 24-hour, show seconds |
+| Pomodoro | Work duration (1–120 min), break duration (1–60 min) |
+| Search engine | Google, Bing, DuckDuckGo, Brave, Ecosia |
+| Quick links | Add, remove, drag to reorder |
+
+All settings stored locally in `chrome.storage.local`.
+
+---
+
+## Custom Grouping
+
+Create `extension/config.local.js` (gitignored) to customize tab grouping:
+
+```javascript
+// Merge all *.github.io sites into one group
+const LOCAL_CUSTOM_GROUPS = [
+  {
+    hostnameEndsWith: '.github.io',
+    groupKey: 'github-pages',
+    groupLabel: 'GitHub Pages'
+  }
+];
+
+// Add extra landing page patterns
+const LOCAL_LANDING_PAGE_PATTERNS = [
+  { hostname: 'calendar.google.com', pathExact: ['/'] }
+];
+```
+
+---
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
 | Extension | Chrome Manifest V3 |
-| Storage | chrome.storage.local |
+| Storage | `chrome.storage.local` + `localStorage` |
 | Sound | Web Audio API (synthesized, no files) |
 | Animations | CSS transitions + JS confetti particles |
+| Layout | CSS columns (masonry) |
+| Fonts | Newsreader + DM Sans (Google Fonts) |
+| Build tools | None — pure HTML/CSS/JS |
 
 ---
 
@@ -88,4 +143,4 @@ MIT
 
 ---
 
-Built by [Zara](https://x.com/zarazhangrui)
+Originally built by [Zara](https://x.com/zarazhangrui). This fork adds dark mode, search, weather, pomodoro timer, drag-and-drop, recently closed tabs, keyboard shortcut, and real-time tab sync.
