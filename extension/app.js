@@ -28,11 +28,16 @@ const CONFIG_DEFAULTS = {
   clockFormat: '12',
   searchEngine: 'google',
   quickLinks: [
-    { title: 'Gmail',    url: 'https://mail.google.com' },
-    { title: 'GitHub',   url: 'https://github.com' },
-    { title: 'YouTube',  url: 'https://youtube.com' },
-    { title: 'Twitter',  url: 'https://x.com' },
-    { title: 'LinkedIn', url: 'https://linkedin.com' },
+    { title: 'Gmail',      url: 'https://mail.google.com' },
+    { title: 'GitHub',     url: 'https://github.com' },
+    { title: 'YouTube',    url: 'https://youtube.com' },
+    { title: 'Twitter',    url: 'https://x.com' },
+    { title: 'Overleaf',   url: 'https://overleaf.com' },
+    { title: 'NJU ehall',  url: 'https://ehall.nju.edu.cn/ywtb-portal/official/index.html#/' },
+    { title: 'W&B',        url: 'https://wandb.ai' },
+    { title: 'WeCom Mail', url: 'https://work.weixin.qq.com/mail/' },
+    { title: 'Bilibili',   url: 'https://bilibili.com' },
+    { title: 'Notion',     url: 'https://notion.so' },
   ],
 };
 
@@ -1876,9 +1881,19 @@ async function loadWeather() {
       el.textContent = cached;
       return;
     }
-    const resp = await fetch('https://wttr.in/?format=%t+%C', { signal: AbortSignal.timeout(5000) });
+    const resp = await fetch('https://wttr.in/?format=%C', {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'Accept': 'text/plain' }
+    });
     if (!resp.ok) throw new Error();
-    const text = (await resp.text()).trim();
+    let text = (await resp.text()).trim();
+    // wttr.in may return HTML instead of plain text; extract the actual weather string
+    if (text.startsWith('<') || text.includes('<!DOCTYPE')) {
+      const match = text.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
+                 || text.match(/<div[^>]*class="term-container"[^>]*>([\s\S]*?)<\/div>/i);
+      text = match ? match[1].replace(/<[^>]*>/g, '').trim() : '';
+      if (!text) throw new Error('HTML response');
+    }
     el.textContent = text;
     localStorage.setItem('tabout-weather', text);
     localStorage.setItem('tabout-weather-time', Date.now().toString());
